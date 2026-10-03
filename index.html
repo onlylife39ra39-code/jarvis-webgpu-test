@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>JARVIS Local AI Test</title>
+<style>
+body{margin:0;background:#0b1118;color:#e9f1f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:720px;margin:auto;padding:18px 14px 28px}
+.card{background:#121d27;border:1px solid #2a3e4d;border-radius:16px;padding:18px;margin-bottom:14px}
+h1{margin:0 0 5px;letter-spacing:4px;font-size:22px}small{color:#8ea1af}
+button,textarea{font:inherit;border-radius:10px;border:1px solid #385161;background:#0d1720;color:#edf5f8;padding:12px}
+button{background:#176071;border-color:#3b9aaa;font-weight:600;width:100%;margin-top:10px}
+button:disabled{opacity:.45}
+#bar{height:8px;background:#253541;border-radius:8px;overflow:hidden;margin-top:12px}
+#fill{height:100%;width:0;background:#57c9d5;transition:.2s}
+#log{font-size:12px;color:#9eb0bd;line-height:1.5;white-space:pre-wrap}
+#chat{min-height:180px;max-height:48vh;overflow:auto;display:flex;flex-direction:column;gap:9px}
+.msg{padding:11px 13px;border-radius:12px;white-space:pre-wrap;line-height:1.55;font-size:14px;max-width:92%}
+.a{background:#172631;border:1px solid #2b414f;align-self:flex-start}
+.u{background:#174d5a;border:1px solid #287486;align-self:flex-end}
+textarea{width:100%;min-height:70px;resize:vertical;box-sizing:border-box}
+.good{color:#74dfb0}.bad{color:#ff9292}
+</style>
+</head>
+<body><main>
+<div class="card">
+<h1>J.A.R.V.I.S.</h1><small>LOCAL AI — iPhone WebGPU TEST</small>
+<p>AIモデルをiPhoneのブラウザ内で読み込みます。初回はモデル取得のため通信が発生します。会話生成は端末内で行います。</p>
+<button id="load">小型AIモデルを読み込む</button>
+<div id="bar"><div id="fill"></div></div>
+<div id="log">待機中</div>
+</div>
+<div class="card">
+<div id="chat"><div class="msg a">モデル読み込み後、マスターからの指示を受け付けます。</div></div>
+<textarea id="q" placeholder="マスター、指示を入力してください" disabled></textarea>
+<button id="send" disabled>送信</button>
+</div>
+</main>
+<script type="module">
+import {CreateMLCEngine} from "https://esm.run/@mlc-ai/web-llm";
+const MODEL="Llama-3.2-1B-Instruct-q4f16_1-MLC";
+let engine=null,busy=false;
+const $=x=>document.getElementById(x);
+function add(cls,text){const d=document.createElement("div");d.className="msg "+cls;d.textContent=text;$("chat").appendChild(d);$("chat").scrollTop=$("chat").scrollHeight;return d}
+$("load").onclick=async()=>{
+ $("load").disabled=true;$("log").textContent="モデルを準備しています…";
+ try{
+  engine=await CreateMLCEngine(MODEL,{initProgressCallback:p=>{
+   $("log").textContent=p.text||"読み込み中…";
+   if(typeof p.progress==="number")$("fill").style.width=Math.round(p.progress*100)+"%";
+  }});
+  $("fill").style.width="100%";$("log").textContent="モデル読み込み完了。端末内AIが稼働しています。";
+  $("q").disabled=false;$("send").disabled=false;$("load").textContent="読み込み済み";
+  add("a","準備完了しました。マスター、どうぞ。");
+ }catch(e){
+  $("log").textContent="エラー: "+(e?.message||e);
+  $("load").disabled=false;
+ }
+};
+$("send").onclick=async()=>{
+ const q=$("q").value.trim();if(!q||!engine||busy)return;
+ $("q").value="";add("u",q);const out=add("a","");busy=true;$("send").disabled=true;
+ try{
+  const stream=await engine.chat.completions.create({messages:[
+   {role:"system",content:"あなたはJARVIS。ユーザーを「マスター」と呼ぶ。冷静、知的、簡潔な日本語で応答する。できないことをできるとは言わない。"},
+   {role:"user",content:q}],temperature:.7,stream:true});
+  for await(const chunk of stream){out.textContent+=chunk.choices?.[0]?.delta?.content||"";$("chat").scrollTop=$("chat").scrollHeight}
+ }catch(e){out.textContent="応答エラー: "+(e?.message||e)}
+ busy=false;$("send").disabled=false;
+};
+</script>
+</body></html>
